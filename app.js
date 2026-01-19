@@ -3,8 +3,13 @@ class StockDataAPI {
     constructor() {
         // Yahoo Finance APIのベースURL
         this.apiBase = 'https://query1.finance.yahoo.com/v8/finance/chart/';
-        // CORSプロキシ（ブラウザからの直接アクセス用）
-        this.corsProxy = 'https://api.allorigins.win/raw?url=';
+        // 複数のCORSプロキシ（フォールバック付き）
+        this.corsProxies = [
+            'https://corsproxy.io/?',
+            'https://api.allorigins.win/raw?url=',
+            'https://api.codetabs.com/v1/proxy?quest='
+        ];
+        this.currentProxyIndex = 0;
     }
 
     // 日本株の株コードをYahoo Finance形式に変換（例: 7203 -> 7203.T）
@@ -12,20 +17,50 @@ class StockDataAPI {
         return `${code}.T`;
     }
 
+    // CORSプロキシ経由でfetchを試行
+    async fetchWithProxy(targetUrl, proxyIndex = 0) {
+        if (proxyIndex >= this.corsProxies.length) {
+            throw new Error('すべてのプロキシで失敗しました');
+        }
+
+        try {
+            const proxy = this.corsProxies[proxyIndex];
+            let url;
+
+            // プロキシの形式に応じてURLを構築
+            if (proxy.includes('corsproxy.io')) {
+                url = `${proxy}${encodeURIComponent(targetUrl)}`;
+            } else {
+                url = `${proxy}${encodeURIComponent(targetUrl)}`;
+            }
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                // 次のプロキシを試す
+                return this.fetchWithProxy(targetUrl, proxyIndex + 1);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error(`Proxy ${proxyIndex} failed:`, error);
+            // 次のプロキシを試す
+            return this.fetchWithProxy(targetUrl, proxyIndex + 1);
+        }
+    }
+
     // 株価データを取得
     async fetchStockData(stockCode) {
         try {
             const symbol = this.formatStockCode(stockCode);
             const targetUrl = `${this.apiBase}${symbol}`;
-            // CORSプロキシを経由してアクセス
-            const url = `${this.corsProxy}${encodeURIComponent(targetUrl)}`;
 
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error('株価データの取得に失敗しました');
-            }
-
-            const data = await response.json();
+            const data = await this.fetchWithProxy(targetUrl);
 
             if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
                 throw new Error('株価データが見つかりません');
@@ -58,7 +93,9 @@ class StockDataAPI {
 
             let errorMessage = '株価データの取得に失敗しました';
 
-            if (error.message.includes('Failed to fetch')) {
+            if (error.message.includes('すべてのプロキシで失敗')) {
+                errorMessage = '株価データの取得に失敗しました。しばらく待ってから再度お試しください。';
+            } else if (error.message.includes('Failed to fetch')) {
                 errorMessage = 'ネットワークエラー: インターネット接続を確認してください';
             } else if (error.message.includes('not found') || error.message.includes('見つかりません')) {
                 errorMessage = '指定された証券コードが見つかりません';
@@ -77,15 +114,8 @@ class StockDataAPI {
             const symbol = this.formatStockCode(stockCode);
             // Yahoo Finance APIv10を使用（配当情報）
             const targetUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail`;
-            // CORSプロキシを経由してアクセス
-            const url = `${this.corsProxy}${encodeURIComponent(targetUrl)}`;
 
-            const response = await fetch(url);
-            if (!response.ok) {
-                return 0;
-            }
-
-            const data = await response.json();
+            const data = await this.fetchWithProxy(targetUrl);
             const summaryDetail = data.quoteSummary?.result?.[0]?.summaryDetail;
 
             if (summaryDetail && summaryDetail.dividendYield) {
