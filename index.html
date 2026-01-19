@@ -50,6 +50,19 @@
                         <span class="btn-loading" style="display: none;">更新中...</span>
                     </button>
                 </div>
+
+                <!-- サマリーカード -->
+                <div id="portfolioSummary" class="portfolio-summary" style="display: none;">
+                    <div class="summary-card">
+                        <div class="summary-label">総評価額</div>
+                        <div class="summary-value" id="summaryTotalValue">¥0</div>
+                    </div>
+                    <div class="summary-card highlight">
+                        <div class="summary-label">年間配当総額（予想）</div>
+                        <div class="summary-value" id="summaryTotalDividend">¥0</div>
+                    </div>
+                </div>
+
                 <div class="table-responsive">
                     <table id="portfolioTable">
                         <thead>
@@ -61,22 +74,12 @@
                                 <th>評価額 (円)</th>
                                 <th>配当利回り (%)</th>
                                 <th>年間配当金額 (円/株)</th>
-                                <th>年間配当総額 (円)</th>
                                 <th>操作</th>
                             </tr>
                         </thead>
                         <tbody id="portfolioBody">
                             <!-- データは動的に挿入されます -->
                         </tbody>
-                        <tfoot id="portfolioFooter" style="display: none;">
-                            <tr class="total-row">
-                                <td colspan="3"><strong>合計</strong></td>
-                                <td><strong id="totalValue">0</strong></td>
-                                <td colspan="2"></td>
-                                <td><strong id="totalDividend">0</strong></td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
                     </table>
                 </div>
                 <div id="emptyState" class="empty-state">

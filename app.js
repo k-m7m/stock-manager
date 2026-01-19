@@ -351,22 +351,21 @@ class StockPortfolioApp {
     renderPortfolio() {
         const tbody = document.getElementById('portfolioBody');
         const emptyState = document.getElementById('emptyState');
-        const footer = document.getElementById('portfolioFooter');
+        const portfolioSummary = document.getElementById('portfolioSummary');
 
         if (this.stocks.length === 0) {
             tbody.innerHTML = '';
             emptyState.style.display = 'block';
-            footer.style.display = 'none';
+            portfolioSummary.style.display = 'none';
             return;
         }
 
         emptyState.style.display = 'none';
-        footer.style.display = 'table-footer-group';
+        portfolioSummary.style.display = 'grid';
 
         tbody.innerHTML = this.stocks.map(stock => {
             const value = this.calculateValue(stock);
             const annualDividendPerShare = this.calculateAnnualDividendPerShare(stock);
-            const annualDividendTotal = this.calculateAnnualDividendTotal(stock);
 
             return `
                 <tr>
@@ -377,7 +376,6 @@ class StockPortfolioApp {
                     <td>${this.formatNumber(value)}</td>
                     <td>${this.formatDecimal(stock.dividendYield)}</td>
                     <td>${this.formatDecimal(annualDividendPerShare)}</td>
-                    <td>${this.formatNumber(annualDividendTotal)}</td>
                     <td>
                         <div class="action-buttons">
                             <button class="btn btn-edit" onclick="app.startEdit(${stock.id})">編集</button>
@@ -388,9 +386,12 @@ class StockPortfolioApp {
             `;
         }).join('');
 
-        // 合計を更新
-        document.getElementById('totalValue').textContent = this.formatNumber(this.calculateTotalValue());
-        document.getElementById('totalDividend').textContent = this.formatNumber(this.calculateTotalDividend());
+        // サマリーを更新
+        const totalValue = this.calculateTotalValue();
+        const totalDividend = this.calculateTotalDividend();
+
+        document.getElementById('summaryTotalValue').textContent = '¥' + this.formatNumber(totalValue);
+        document.getElementById('summaryTotalDividend').textContent = '¥' + this.formatNumber(totalDividend);
     }
 
     // HTMLエスケープ
