@@ -1,8 +1,10 @@
 // 株価データ取得API
 class StockDataAPI {
     constructor() {
-        // Yahoo Finance APIのベースURL（CORS対応）
+        // Yahoo Finance APIのベースURL
         this.apiBase = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+        // CORSプロキシ（ブラウザからの直接アクセス用）
+        this.corsProxy = 'https://api.allorigins.win/raw?url=';
     }
 
     // 日本株の株コードをYahoo Finance形式に変換（例: 7203 -> 7203.T）
@@ -14,7 +16,9 @@ class StockDataAPI {
     async fetchStockData(stockCode) {
         try {
             const symbol = this.formatStockCode(stockCode);
-            const url = `${this.apiBase}${symbol}`;
+            const targetUrl = `${this.apiBase}${symbol}`;
+            // CORSプロキシを経由してアクセス
+            const url = `${this.corsProxy}${encodeURIComponent(targetUrl)}`;
 
             const response = await fetch(url);
             if (!response.ok) {
@@ -51,9 +55,18 @@ class StockDataAPI {
 
         } catch (error) {
             console.error('Stock data fetch error:', error);
+
+            let errorMessage = '株価データの取得に失敗しました';
+
+            if (error.message.includes('Failed to fetch')) {
+                errorMessage = 'ネットワークエラー: インターネット接続を確認してください';
+            } else if (error.message.includes('not found') || error.message.includes('見つかりません')) {
+                errorMessage = '指定された証券コードが見つかりません';
+            }
+
             return {
                 success: false,
-                error: error.message
+                error: errorMessage
             };
         }
     }
@@ -63,7 +76,9 @@ class StockDataAPI {
         try {
             const symbol = this.formatStockCode(stockCode);
             // Yahoo Finance APIv10を使用（配当情報）
-            const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail`;
+            const targetUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail`;
+            // CORSプロキシを経由してアクセス
+            const url = `${this.corsProxy}${encodeURIComponent(targetUrl)}`;
 
             const response = await fetch(url);
             if (!response.ok) {
