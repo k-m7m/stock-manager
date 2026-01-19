@@ -1,8 +1,113 @@
+// 株価データ取得API
+class StockDataAPI {
+    constructor() {
+        // Yahoo Finance APIのベースURL（CORS対応）
+        this.apiBase = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+    }
+
+    // 日本株の株コードをYahoo Finance形式に変換（例: 7203 -> 7203.T）
+    formatStockCode(code) {
+        return `${code}.T`;
+    }
+
+    // 株価データを取得
+    async fetchStockData(stockCode) {
+        try {
+            const symbol = this.formatStockCode(stockCode);
+            const url = `${this.apiBase}${symbol}`;
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error('株価データの取得に失敗しました');
+            }
+
+            const data = await response.json();
+
+            if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+                throw new Error('株価データが見つかりません');
+            }
+
+            const result = data.chart.result[0];
+            const meta = result.meta;
+            const quote = result.indicators.quote[0];
+
+            // 現在株価（最新の終値）
+            const currentPrice = meta.regularMarketPrice || meta.previousClose;
+
+            // 銘柄名（日本語が取得できない場合は株コードを使用）
+            const stockName = meta.longName || meta.shortName || stockCode;
+
+            // 配当利回り（Yahoo Financeから直接取得できないため、別途取得が必要）
+            // ここでは簡易的に0を設定（後で手動更新可能）
+            const dividendYield = 0;
+
+            return {
+                code: stockCode,
+                name: stockName,
+                currentPrice: currentPrice,
+                dividendYield: dividendYield,
+                success: true
+            };
+
+        } catch (error) {
+            console.error('Stock data fetch error:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    // 配当利回りを取得（Yahoo Finance Statistics API）
+    async fetchDividendYield(stockCode) {
+        try {
+            const symbol = this.formatStockCode(stockCode);
+            // Yahoo Finance APIv10を使用（配当情報）
+            const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail`;
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                return 0;
+            }
+
+            const data = await response.json();
+            const summaryDetail = data.quoteSummary?.result?.[0]?.summaryDetail;
+
+            if (summaryDetail && summaryDetail.dividendYield) {
+                // パーセンテージに変換（Yahoo Financeは小数で返す）
+                return (summaryDetail.dividendYield.raw * 100).toFixed(2);
+            }
+
+            return 0;
+
+        } catch (error) {
+            console.error('Dividend yield fetch error:', error);
+            return 0;
+        }
+    }
+
+    // 完全な株式情報を取得（株価 + 配当）
+    async getCompleteStockData(stockCode) {
+        const stockData = await this.fetchStockData(stockCode);
+
+        if (!stockData.success) {
+            return stockData;
+        }
+
+        // 配当利回りを別途取得
+        const dividendYield = await this.fetchDividendYield(stockCode);
+        stockData.dividendYield = parseFloat(dividendYield);
+
+        return stockData;
+    }
+}
+
 // アプリケーション状態管理
 class StockPortfolioApp {
     constructor() {
         this.stocks = [];
         this.editingId = null;
+        this.api = new StockDataAPI();
         this.init();
     }
 
@@ -17,6 +122,7 @@ class StockPortfolioApp {
     setupEventListeners() {
         const form = document.getElementById('stockForm');
         const cancelBtn = document.getElementById('cancelBtn');
+        const refreshAllBtn = document.getElementById('refreshAllBtn');
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -26,38 +132,132 @@ class StockPortfolioApp {
         cancelBtn.addEventListener('click', () => {
             this.cancelEdit();
         });
+
+        refreshAllBtn.addEventListener('click', () => {
+            this.refreshAllStocks();
+        });
     }
 
     // フォーム送信処理
-    handleSubmit() {
-        const stockName = document.getElementById('stockName').value.trim();
+    async handleSubmit() {
+        const stockCode = document.getElementById('stockCode').value.trim();
         const shares = parseInt(document.getElementById('shares').value);
-        const currentPrice = parseFloat(document.getElementById('currentPrice').value);
-        const dividendYield = parseFloat(document.getElementById('dividendYield').value);
 
-        if (this.editingId !== null) {
-            // 編集モード
-            this.updateStock(this.editingId, {
-                name: stockName,
-                shares: shares,
-                currentPrice: currentPrice,
-                dividendYield: dividendYield
-            });
-            this.cancelEdit();
-        } else {
-            // 新規追加モード
-            this.addStock({
-                id: Date.now(),
-                name: stockName,
-                shares: shares,
-                currentPrice: currentPrice,
-                dividendYield: dividendYield
-            });
+        // ローディング状態にする
+        this.setLoadingState(true);
+        this.hideError();
+
+        try {
+            if (this.editingId !== null) {
+                // 編集モード：株数のみ更新
+                this.updateStock(this.editingId, { shares: shares });
+                this.cancelEdit();
+            } else {
+                // 新規追加モード：株価データを取得
+                const stockData = await this.api.getCompleteStockData(stockCode);
+
+                if (!stockData.success) {
+                    this.showError(stockData.error || '株式情報の取得に失敗しました。証券コードを確認してください。');
+                    this.setLoadingState(false);
+                    return;
+                }
+
+                // 既に同じ株コードが登録されているか確認
+                const existingStock = this.stocks.find(s => s.code === stockCode);
+                if (existingStock) {
+                    this.showError('この証券コードは既に登録されています。');
+                    this.setLoadingState(false);
+                    return;
+                }
+
+                this.addStock({
+                    id: Date.now(),
+                    code: stockData.code,
+                    name: stockData.name,
+                    shares: shares,
+                    currentPrice: stockData.currentPrice,
+                    dividendYield: stockData.dividendYield
+                });
+            }
+
+            this.clearForm();
+            this.saveToStorage();
+            this.renderPortfolio();
+
+        } catch (error) {
+            console.error('Submit error:', error);
+            this.showError('予期しないエラーが発生しました。');
+        } finally {
+            this.setLoadingState(false);
+        }
+    }
+
+    // 全銘柄の株価を更新
+    async refreshAllStocks() {
+        if (this.stocks.length === 0) {
+            return;
         }
 
-        this.clearForm();
-        this.saveToStorage();
-        this.renderPortfolio();
+        const refreshBtn = document.getElementById('refreshAllBtn');
+        const btnText = refreshBtn.querySelector('.btn-text');
+        const btnLoading = refreshBtn.querySelector('.btn-loading');
+
+        refreshBtn.disabled = true;
+        btnText.style.display = 'none';
+        btnLoading.style.display = 'inline-block';
+
+        try {
+            for (let stock of this.stocks) {
+                const stockData = await this.api.getCompleteStockData(stock.code);
+
+                if (stockData.success) {
+                    stock.currentPrice = stockData.currentPrice;
+                    stock.dividendYield = stockData.dividendYield;
+                    stock.name = stockData.name;
+                }
+            }
+
+            this.saveToStorage();
+            this.renderPortfolio();
+
+        } catch (error) {
+            console.error('Refresh error:', error);
+            alert('一部の銘柄の更新に失敗しました。');
+        } finally {
+            refreshBtn.disabled = false;
+            btnText.style.display = 'inline-block';
+            btnLoading.style.display = 'none';
+        }
+    }
+
+    // ローディング状態の設定
+    setLoadingState(isLoading) {
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = submitBtn.querySelector('.btn-text');
+        const btnLoading = submitBtn.querySelector('.btn-loading');
+
+        submitBtn.disabled = isLoading;
+
+        if (isLoading) {
+            btnText.style.display = 'none';
+            btnLoading.style.display = 'inline-block';
+        } else {
+            btnText.style.display = 'inline-block';
+            btnLoading.style.display = 'none';
+        }
+    }
+
+    // エラーメッセージを表示
+    showError(message) {
+        const errorDiv = document.getElementById('errorMessage');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+    }
+
+    // エラーメッセージを非表示
+    hideError() {
+        const errorDiv = document.getElementById('errorMessage');
+        errorDiv.style.display = 'none';
     }
 
     // 銘柄追加
@@ -82,18 +282,17 @@ class StockPortfolioApp {
         }
     }
 
-    // 編集モード開始
+    // 編集モード開始（株数のみ編集可能）
     startEdit(id) {
         const stock = this.stocks.find(s => s.id === id);
         if (!stock) return;
 
         this.editingId = id;
-        document.getElementById('stockName').value = stock.name;
+        document.getElementById('stockCode').value = stock.code;
+        document.getElementById('stockCode').disabled = true; // 証券コードは編集不可
         document.getElementById('shares').value = stock.shares;
-        document.getElementById('currentPrice').value = stock.currentPrice;
-        document.getElementById('dividendYield').value = stock.dividendYield;
 
-        document.getElementById('submitBtn').textContent = '更新';
+        document.getElementById('submitBtn').querySelector('.btn-text').textContent = '更新';
         document.getElementById('cancelBtn').style.display = 'inline-block';
 
         // フォームまでスクロール
@@ -104,13 +303,15 @@ class StockPortfolioApp {
     cancelEdit() {
         this.editingId = null;
         this.clearForm();
-        document.getElementById('submitBtn').textContent = '追加';
+        document.getElementById('stockCode').disabled = false;
+        document.getElementById('submitBtn').querySelector('.btn-text').textContent = '追加';
         document.getElementById('cancelBtn').style.display = 'none';
     }
 
     // フォームクリア
     clearForm() {
         document.getElementById('stockForm').reset();
+        this.hideError();
     }
 
     // 計算メソッド
@@ -169,6 +370,7 @@ class StockPortfolioApp {
 
             return `
                 <tr>
+                    <td>${this.escapeHtml(stock.code)}</td>
                     <td>${this.escapeHtml(stock.name)}</td>
                     <td>${this.formatNumber(stock.shares)}</td>
                     <td>${this.formatNumber(stock.currentPrice)}</td>

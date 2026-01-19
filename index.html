@@ -16,39 +16,45 @@
             <!-- 銘柄追加フォーム -->
             <section class="add-stock-section">
                 <h2>銘柄を追加</h2>
+                <p class="form-description">株コードと株数を入力すると、最新の株価・配当情報を自動取得します</p>
                 <form id="stockForm">
-                    <div class="form-grid">
+                    <div class="form-grid-simple">
                         <div class="form-group">
-                            <label for="stockName">銘柄名</label>
-                            <input type="text" id="stockName" placeholder="例: トヨタ自動車" required>
+                            <label for="stockCode">証券コード</label>
+                            <input type="text" id="stockCode" placeholder="例: 7203 (トヨタ)" required pattern="[0-9]{4}" title="4桁の証券コードを入力してください">
+                            <small class="input-hint">4桁の証券コード</small>
                         </div>
                         <div class="form-group">
                             <label for="shares">購入株数</label>
                             <input type="number" id="shares" placeholder="100" min="1" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="currentPrice">現在株価 (円)</label>
-                            <input type="number" id="currentPrice" placeholder="2000" min="0" step="0.01" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="dividendYield">配当利回り (%)</label>
-                            <input type="number" id="dividendYield" placeholder="3.5" min="0" step="0.01" required>
+                            <small class="input-hint">保有する株数</small>
                         </div>
                     </div>
                     <div class="form-actions">
-                        <button type="submit" class="btn btn-primary" id="submitBtn">追加</button>
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <span class="btn-text">追加</span>
+                            <span class="btn-loading" style="display: none;">取得中...</span>
+                        </button>
                         <button type="button" class="btn btn-secondary" id="cancelBtn" style="display: none;">キャンセル</button>
                     </div>
+                    <div id="errorMessage" class="error-message" style="display: none;"></div>
                 </form>
             </section>
 
             <!-- ポートフォリオ一覧 -->
             <section class="portfolio-section">
                 <h2>保有銘柄一覧</h2>
+                <div class="portfolio-actions">
+                    <button type="button" class="btn btn-refresh" id="refreshAllBtn">
+                        <span class="btn-text">全銘柄を更新</span>
+                        <span class="btn-loading" style="display: none;">更新中...</span>
+                    </button>
+                </div>
                 <div class="table-responsive">
                     <table id="portfolioTable">
                         <thead>
                             <tr>
+                                <th>証券コード</th>
                                 <th>銘柄名</th>
                                 <th>購入株数</th>
                                 <th>現在株価 (円)</th>
@@ -81,6 +87,7 @@
 
         <footer>
             <p>データはブラウザのローカルストレージに保存されます</p>
+            <p class="api-notice">株価・配当データはYahoo Finance APIから取得しています（市場の取引時間外は前日終値を表示）</p>
         </footer>
     </div>
 
